@@ -16,6 +16,7 @@ import scipy.integrate as spi
 import MyTicToc as mt
 import matplotlib.pyplot as plt
 from collections import namedtuple
+import HeatDiffusionPython as hdp
 
 # plot figures inline
 #%matplotlib inline 
@@ -28,6 +29,21 @@ from collections import namedtuple
 # BndTTop for calculating the rain as a function of time;
 # watertFlux for calculating all water flows in the domain;
 # DivwaterFlux for calculating the divergence of the waterflow across the cells in the domain.
+
+
+#make the temperature viscosity table
+def TempVis(T):
+    Tini = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653, 0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
+    p = np.polyfit(Tini, mu, 11)
+    p = np.poly1d(p)
+    mu1 = p(T)
+    return mu1
+
+#make Ksat          #maybe make array from this?
+def Ksat(T, sPar):
+    Ksat = sPar.kappa / TempVis(T) * sPar.rhoW * 9.81
+    return Ksat
 
 
 #making S effective
@@ -63,10 +79,10 @@ def BndwTop(t, bPar):    #t> 25 and 200 -0.001
 
 
 # part of the richardson equation Ksat*krw(gradient*hw+flux*z))
-def waterFlux(t, hw, sPar, mDim, bPar):
+def waterFlux(t, T, hw, sPar, mDim, bPar):
     nIN = mDim.nIN
     dzN = mDim.dzN
-    ksat= sPar.ksat
+    ksat= Ksat(T, sPar)
     krw=krwfun(hw, sPar, mDim)
     nr,nc = hw.shape
     q = np.zeros((nIN,nc))
@@ -133,21 +149,6 @@ def dhwdtFun(t, hw, sPar, mDim, bPar):
     i = np.arange(0,nN)
     divqW[i] = -(qW[i + 1] - qW[i]) / (dzIN[i] * C[i])
     return divqW
-
-
-def jac_complex(t, hw, sPar, mDim, bPar):
-    x = len(hw)
-    hw = hw.reshape(x,1)
-    nr,nc = hw.shape
-    dh=np.sqrt(np.finfo(float).eps)
-    jac=np.zeros((nr,nr))
-    for i in np.arange(nr):
-        hwcmplx=hw.copy().astype(complex)
-        hwcmplx[i]=hwcmplx[i]+1j*dh
-        dfdy=dhwdtFun(t, hwcmplx, sPar, mDim, bPar).imag/dh
-        jac[:,i]=dfdy.squeeze()
-    return jac    
-
     
 def main():
     # Then we start running our model.
@@ -189,11 +190,11 @@ def main():
     m= 1-(1/3)
     alpha=2 #m^-1
     Cv=1e-8
-    ksat= 0.05 #m/day
+    kappa = 0.05 #m/day
 
     # collect soil parameters in a namedtuple: soilPar
-    soilPar = namedtuple('soilPar', ['rhoW','n', 'm','alpha', 'Cv', 'ksat','theta_res', 'theta_sat'])
-    sPar = soilPar(rhoW=np.ones(np.shape(zN))*rhoW, n=np.ones(np.shape(zN))*n, m=np.ones(np.shape(zN))*m, alpha=np.ones(np.shape(zN))*alpha, Cv=np.ones(np.shape(zN))*Cv, ksat=np.ones(np.shape(zN))*ksat, theta_res=np.ones(np.shape(zN))*theta_res, 
+    soilPar = namedtuple('soilPar', ['rhoW','n', 'm','alpha', 'Cv', 'kappa','theta_res', 'theta_sat'])
+    sPar = soilPar(rhoW=np.ones(np.shape(zN))*rhoW, n=np.ones(np.shape(zN))*n, m=np.ones(np.shape(zN))*m, alpha=np.ones(np.shape(zN))*alpha, Cv=np.ones(np.shape(zN))*Cv, kappa=np.ones(np.shape(zN))*kappa, theta_res=np.ones(np.shape(zN))*theta_res, 
                    theta_sat =np.ones(np.shape(zN))*theta_sat)
                    
 
@@ -220,15 +221,25 @@ def main():
 
     mt.tic()
 
-    def intFun(t, hw):
+    def intFun(t, T, hw):
         if len(hw.shape) == 1:
             hw = hw.reshaspe(nN,1)
         nf = dhwdtFun(t, hw, sPar, mDim, bPar)
-        return nf
+        nv = hdp.DivHeatflux(t, T, sPar, mDim, bPar) 
+        dhdwT = np.concatenate(nf,nv)
+        return dhdwT
 
     def jacFun(t, y):
-        jac = jac_complex(t, y, sPar, mDim, bPar)
-        return (jac)
+        if len(y.shape)==1:
+            y = y.reshape(mDim.nN,1)
+        
+        nr, nc = y.shape
+        dh = np.sqrt(np.finfo(float).eps)
+        ycmplx = np.repeat(y,nr,axis=1).astype(complex)
+        c_ex = np.eye(nr)*1j*dh
+        ycmplx = ycmplx + c_ex
+        dfdy = intFun(t,T,ycmplx).imag/dh      #make T complex
+        return spi.coo_matrix(dfdy)
 
     
    # H0 = HIni.squeeze()

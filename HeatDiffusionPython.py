@@ -17,6 +17,7 @@ import MyTicToc as mt
 import matplotlib.pyplot as plt
 from collections import namedtuple
 
+
 # plot figures inline
 #%matplotlib inline
 
