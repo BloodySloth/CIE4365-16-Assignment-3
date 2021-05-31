@@ -45,6 +45,46 @@ def Ksat(T, sPar):
     Ksat = sPar.kappa / TempVis(T) * sPar.rhoW * 9.81
     return Ksat
 
+def lambda_fun(hw, sPar, mDim):     #Gaat dit goed met de definitie theta? Moeten we die msischien eerder oproepen? check als we het runnen
+    nN = mDim.nN 
+    nIN = mDim.nIN   
+    
+    thetaw = Theta(hw, sPar)
+    Sw = thetaw/ sPar.theta_sat
+    por = sPar.theta_sat     #porosity n
+     
+    ls = sPar.lambdas
+    lw = sPar.lambdaw
+    la = sPar.lambdada + (sPar.lambdava*Sw)
+    g1 = 0.015 + (0.333-0.015)*Sw
+    g3 = 1 - g1 - g1
+       
+    Fw = sPar.Fw
+    Fa = 1/3 *(((1+(la/lw-1)*g1)**-1)+((1+(la/lw-1)*g1)**-1)+((1+(la/lw-1)*g3)**-1))
+    Fs = 1/3 *(((1+(ls/lw-1)*g1)**-1)+((1+(ls/lw-1)*g1)**-1)+((1+(ls/lw-1)*g3)**-1))
+    
+    lamtot = (Fs*ls*(1-por) + Fw*lw*por*Sw + Fa*la*por*(1-Sw))\
+        /(Fs*(1-por) + Fw*por*Sw + Fa*por*(1-Sw))
+        
+    lamtotIN = np.zeros(np.shape(mDim.zIN),dtype=hw.dtype)
+    lamtotIN[0,0] =  lamtot[0,0]
+    ii = np.arange(1, nIN-1)     
+    lamtotIN[ii,0] = np.minimum(lamtot[ii-1,0],lamtot[ii,0])
+    lamtotIN[nIN-1,0] = lamtot[nIN-2,0] 
+    
+    return lamtotIN*24*3600
+
+
+def zeta_fun(hw, sPar):       #zet zetaSol, zetaWat en zetaAir in assignment_3.py of leest het heat diff.?
+    hw = np.real(hw.copy())
+    thetaw = Theta(hw, sPar)
+    por = sPar.theta_sat
+    zetas = sPar.zetaSol
+    zetaw = sPar.zetaWat
+    zetaa = sPar.zetaAir
+    
+    zetatot = zetas * (1-por) + zetaw*thetaw + (sPar.theta_sat-thetaw)*zetaa
+    return zetatot
 
 #making S effective
 def SEFF(hw, sPar):
@@ -103,6 +143,48 @@ def waterFlux(t, T, hw, sPar, mDim, bPar):
 
     return q
 
+def HeatFlux(t, T, hw, sPar, mDim, bPar):
+    nIN = mDim.nIN
+    nN = mDim.nN
+    dzN = mDim.dzN
+    lambdaIN = lambda_fun(hw, sPar, mDim)
+    zetaW = sPar.zetaW
+    qw = waterFlux(t, T, hw, sPar, mDim, bPar)
+
+    ql = np.zeros(nIN, 1)
+    qz = np.zeros(nIN,1)
+
+    # Temperature at top boundary
+    bndT = BndTTop(t, bPar)
+
+
+    # Calculate heat flux in domain
+    # Bottom layer Robin condition
+    ql[0, 0] = 0.0
+    ql[0, 0] = -bPar.lambdaRobBot * (T[0, 0] - bPar.TBndBot)
+
+    qz[0, 0] = 0.0
+    qz[0, 0] = qw[0,0] * zetaW * (bPar.TBndBot * (qw[0,0] >= 0) \
+                  + T[0,0] *  (qw[0,0] < 0))
+        
+    # Flux in all intermediate nodes
+    i = np.arange(1, nIN - 1)
+    ql[i, 0] = -lambdaIN[i, 0] * ((T[i, 0] - T[i - 1, 0])
+                                   / dzN[i - 1, 0])
+
+    qz[i, 0] = zetaW * qw[i,0] * (T[i-1,0] * (qw[i,0] >= 0) +\
+              	T[i,0] * (qw[i,0] < 0))              
+    
+    # Top layer
+    
+        # Robin condition            
+    ql[nIN-1, 0] = -bPar.lambdaRobTop * (bndT - T[nN-1, 0])
+    qz[nIN-1, 0] = zetaW * qw[nIN - 1,0] * (T[nN-1,0] * (qw[nIN-1,0] >= 0) + \
+              	 bndT * (qw[nIN-1,0] < 0)) 
+    
+    qh= ql + qz
+    return qh
+
 
 #def Cfun(sPar, hw):
 #    hc=-hw
@@ -135,21 +217,64 @@ def Caccentfun(hw, sPar, mDim):
     return C
 
 
-def dhwdtFun(t, hw, sPar, mDim, bPar):
-    nr,nc = hw.shape
-    nN = mDim.nN
-    dzIN = mDim.dzIN
+#def dhwdtFun(t, hw, sPar, mDim, bPar):
+#    nr,nc = hw.shape
+ #   nN = mDim.nN
+  #  dzIN = mDim.dzIN
 
-    divqW = np.zeros([nN,nc]).astype(hw.dtype)
+   # divqW = np.zeros([nN,nc]).astype(hw.dtype)
 
-    C = Caccentfun(hw, sPar, mDim)
-    qW = waterFlux(t, hw, sPar, mDim, bPar)
+    #C = Caccentfun(hw, sPar, mDim)
+    #qW = waterFlux(t, hw, sPar, mDim, bPar)
     
     # Calculate divergence of flux for all nodes
-    i = np.arange(0,nN)
-    divqW[i] = -(qW[i + 1] - qW[i]) / (dzIN[i] * C[i])
-    return divqW
+    #i = np.arange(0,nN)
+    #divqW[i] = -(qW[i + 1] - qW[i]) / (dzIN[i] * C[i])
+    #return divqW
     
+def divCoupled(t, y, sPar, mDim, bPar): 
+    zN=mDim.zN
+    nN = mDim.nN
+    dzIN = mDim.dzIN
+    sdim = y.shape
+    
+    if len(sdim) == 1:
+        y = y.reshape((2*nN,1))
+   
+    divqw = np.zeros([nN, 1], dtype=y.dtype)
+    divqh = np.zeros([nN, 1], dtype=y.dtype)
+    
+    dhwdt = np.zeros([nN,1],dtype=y.dtype)
+    dTdt = np.zeros([nN,1],dtype=y.dtype)
+    
+    totaldif =  np.zeros([2*nN,1],dtype=y.dtype)
+    
+    hw = y[0:nN,0].reshape(mDim.zN.shape)
+    T = y[nN:2*nN,0].reshape(mDim.zN.shape)
+    
+   
+    #pressure head differential equation
+    qw = waterFlux(t, T, hw, sPar, mDim, bPar) 
+    C = Caccentfun(hw, sPar, mDim) 
+    i = np.arange(0, nN)
+    divqw[i, 0] = -(qw[i + 1,0] - qw[i,0]) \
+                  / (dzIN[i,0]) 
+    dhwdt = divqw/C
+
+    
+    #temperature differential equation
+    qh = HeatFlux(t, T, hw, sPar, mDim, bPar) 
+    zeta= zeta_fun (hw, sPar) 
+    i = np.arange(0, nN)
+    divqh[i,0] = -(qh[i + 1,0] - qh[i,0]) \
+                   / (dzIN[i,0])
+    dTdt = (divqh - (T[i] * (sPar.zetaWat-sPar.zetaAir) * divqw)) / zeta[i]
+    
+    totaldif = np.vstack([dhwdt, dTdt]) 
+
+    return totaldif
+
+
 def main():
     # Then we start running our model.
     # First we require the domain discretization
