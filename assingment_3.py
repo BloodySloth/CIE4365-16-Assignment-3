@@ -32,22 +32,25 @@ import HeatDiffusionPython as hdp
 
 
 #make the temperature viscosity table
-def TempVis(T):
+def TempVis(T, mDim):
     Tini = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653, 0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
     p = np.polyfit(Tini, mu, 11)
     p = np.poly1d(p)
-    mu1 = p(T)
+    mu1 = p(T) 
+    zN = mDim.zN
+    mu1 = np.ones(np.shape(zN))*mu1[0]
     return mu1
 
 #make Ksat          #maybe make array from this?
-def Ksat(T, sPar):
-    Ksat = sPar.kappa / TempVis(T) * sPar.rhoW * 9.81
+def Ksat(T, sPar, mDim):
+    Ksat = sPar.kappa / TempVis(T, mDim) * sPar.rhoW * 9.81
+    
     return Ksat
 
 def lambda_fun(hw, sPar, mDim):     #Gaat dit goed met de definitie theta? Moeten we die msischien eerder oproepen? check als we het runnen
     nN = mDim.nN 
-    nIN = mDim.nIN   
+    nIN = mDim.nIN
     
     thetaw = Theta(hw, sPar)
     Sw = thetaw/ sPar.theta_sat
@@ -67,10 +70,10 @@ def lambda_fun(hw, sPar, mDim):     #Gaat dit goed met de definitie theta? Moete
         /(Fs*(1-por) + Fw*por*Sw + Fa*por*(1-Sw))
         
     lamtotIN = np.zeros(np.shape(mDim.zIN),dtype=hw.dtype)
-    lamtotIN[0,0] =  lamtot[0,0]
-    ii = np.arange(1, nIN-1)     
-    lamtotIN[ii,0] = np.minimum(lamtot[ii-1,0],lamtot[ii,0])
-    lamtotIN[nIN-1,0] = lamtot[nIN-2,0] 
+    lamtotIN[0] =  lamtot[0]
+    i = np.arange(1, nIN-1)     
+    lamtotIN[i] = np.minimum(lamtot[i-1],lamtot[i])
+    lamtotIN[nIN-1] = lamtot[nIN-2] 
     
     return lamtotIN*24*3600
 
@@ -78,12 +81,14 @@ def lambda_fun(hw, sPar, mDim):     #Gaat dit goed met de definitie theta? Moete
 def zeta_fun(hw, sPar):       #zet zetaSol, zetaWat en zetaAir in assignment_3.py of leest het heat diff.?
     hw = np.real(hw.copy())
     thetaw = Theta(hw, sPar)
-    por = sPar.theta_sat
+    Sw=thetaw/sPar.theta_sat
+    rhoS = 2650  # [kg/m3] density of solid phase
+    rhoB = 1700  # %[kg/m3] dry bulk density of soil
+    por = 1 - rhoB / rhoS  # [-] porosity of soil = saturated water content.
     zetas = sPar.zetaSol
-    zetaw = sPar.zetaWat
-    zetaa = sPar.zetaAir
+    zetaw = sPar.zetaWat      #the heat capacity of air phase is neglected: zetaAir is neglected
     
-    zetatot = zetas * (1-por) + zetaw*thetaw + (sPar.theta_sat-thetaw)*zetaa
+    zetatot = zetas * (1-por) + zetaw*Sw*por
     return zetatot
 
 #making S effective
@@ -117,12 +122,17 @@ def BndwTop(t, bPar):    #t> 25 and 200 -0.001
     bndT= -0.001*(t > bPar.tMin) *(t < bPar.tMax) 
     return bndT
 
+def BndTTop(t, bPar):
+    bndT = bPar.avgT - bPar.rangeT * np.cos(2 * np.pi
+                                            * (t - bPar.tMin) / 365.25)
+    return bndT
+
 
 # part of the richardson equation Ksat*krw(gradient*hw+flux*z))
 def waterFlux(t, T, hw, sPar, mDim, bPar):
     nIN = mDim.nIN
     dzN = mDim.dzN
-    ksat= Ksat(T, sPar)
+    ksat= Ksat(T, sPar, mDim)
     krw=krwfun(hw, sPar, mDim)
     nr,nc = hw.shape
     q = np.zeros((nIN,nc))
@@ -149,10 +159,11 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
     dzN = mDim.dzN
     lambdaIN = lambda_fun(hw, sPar, mDim)
     zetaW = sPar.zetaW
+    nr,nc = T.shape
     qw = waterFlux(t, T, hw, sPar, mDim, bPar)
 
-    ql = np.zeros(nIN, 1)
-    qz = np.zeros(nIN,1)
+    ql = np.zeros(nIN, nc)
+    qz = np.zeros(nIN,nc)
 
     # Temperature at top boundary
     bndT = BndTTop(t, bPar)
@@ -160,27 +171,27 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
 
     # Calculate heat flux in domain
     # Bottom layer Robin condition
-    ql[0, 0] = 0.0
-    ql[0, 0] = -bPar.lambdaRobBot * (T[0, 0] - bPar.TBndBot)
+    ql[0] = 0.0
+    ql[0] = -bPar.lambdaRobBot * (T[0] - bPar.TBndBot)
 
-    qz[0, 0] = 0.0
-    qz[0, 0] = qw[0,0] * zetaW * (bPar.TBndBot * (qw[0,0] >= 0) \
-                  + T[0,0] *  (qw[0,0] < 0))
+    qz[0] = 0.0
+    qz[0] = qw[0] * zetaW * (bPar.TBndBot * (qw[0] >= 0) \
+                  + T[0] *  (qw[0] < 0))
         
     # Flux in all intermediate nodes
     i = np.arange(1, nIN - 1)
-    ql[i, 0] = -lambdaIN[i, 0] * ((T[i, 0] - T[i - 1, 0])
-                                   / dzN[i - 1, 0])
+    ql[i] = -lambdaIN[i] * ((T[i] - T[i - 1])
+                                   / dzN[i - 1])
 
-    qz[i, 0] = zetaW * qw[i,0] * (T[i-1,0] * (qw[i,0] >= 0) +\
-              	T[i,0] * (qw[i,0] < 0))              
+    qz[i] = zetaW * qw[i] * (T[i-1] * (qw[i] >= 0) +\
+              	T[i] * (qw[i] < 0))              
     
     # Top layer
     
         # Robin condition            
-    ql[nIN-1, 0] = -bPar.lambdaRobTop * (bndT - T[nN-1, 0])
-    qz[nIN-1, 0] = zetaW * qw[nIN - 1,0] * (T[nN-1,0] * (qw[nIN-1,0] >= 0) + \
-              	 bndT * (qw[nIN-1,0] < 0)) 
+    ql[nIN-1] = -bPar.lambdaRobTop * (bndT - T[nN-1])
+    qz[nIN-1] = zetaW * qw[nIN - 1] * (T[nN-1] * (qw[nIN-1] >= 0) + \
+              	 bndT * (qw[nIN-1] < 0)) 
     
     qh= ql + qz
     return qh
@@ -217,21 +228,49 @@ def Caccentfun(hw, sPar, mDim):
     return C
 
 
-#def dhwdtFun(t, hw, sPar, mDim, bPar):
-#    nr,nc = hw.shape
- #   nN = mDim.nN
-  #  dzIN = mDim.dzIN
+def dhwdtFun(t, T, hw, sPar, mDim, bPar):
+    nr,nc = hw.shape
+    nN = mDim.nN
+    dzIN = mDim.dzIN
 
-   # divqW = np.zeros([nN,nc]).astype(hw.dtype)
+    divqW = np.zeros([nN,nc]).astype(hw.dtype)
 
-    #C = Caccentfun(hw, sPar, mDim)
-    #qW = waterFlux(t, hw, sPar, mDim, bPar)
+    C = Caccentfun(hw, sPar, mDim)
+    qW = waterFlux(t, T, hw, sPar, mDim, bPar)
     
     # Calculate divergence of flux for all nodes
-    #i = np.arange(0,nN)
-    #divqW[i] = -(qW[i + 1] - qW[i]) / (dzIN[i] * C[i])
-    #return divqW
+    i = np.arange(0,nN)
+    divqW[i] = -(qW[i + 1] - qW[i]) / (dzIN[i] * C[i])
     
+    return divqW
+
+def DivHeatFlux(t, T, hw, sPar, mDim, bPar):
+    nN = mDim.nN
+    dzIN = mDim.dzIN
+    zeta = zeta_fun(hw, sPar)
+    nr,nc = T.shape
+
+    # Calculate heat fluxes accross all internodes
+    qH = HeatFlux(t, hw, T, sPar, mDim, bPar)
+
+    divqH = np.zeros([nN, nc])
+    # Calculate divergence of flux for all nodes
+    i = np.arange(0, nN-1)
+    divqH[i] = -(qH[i + 1] - qH[i]) \
+                   / (dzIN[i] * zeta[i])
+
+    # Top condition is special
+    i = nN-1
+    if bPar.topCond.lower() == 'dirichlet':
+        divqH[i] = 0
+    else:
+        divqH[i] = -(qH[i + 1] - qH[i]) \
+                       / (dzIN[i] * zeta[i])
+
+    divqHRet = divqH # .reshape(T.shape)
+    return divqHRet
+    
+#delete this when it is not necessary
 def divCoupled(t, y, sPar, mDim, bPar): 
     zN=mDim.zN
     nN = mDim.nN
@@ -316,23 +355,36 @@ def main():
     alpha=2 #m^-1
     Cv=1e-8
     kappa = 0.05 #m/day
+    lambdas = 6 
+    lambdaw = 0.57
+    lambdada = 0.025
+    lambdava = 0.0736
+    zetaSol = 2.235e6
+    zetaWat = 4.154e6
 
     # collect soil parameters in a namedtuple: soilPar
-    soilPar = namedtuple('soilPar', ['rhoW','n', 'm','alpha', 'Cv', 'kappa','theta_res', 'theta_sat'])
+    soilPar = namedtuple('soilPar', ['rhoW','n', 'm','alpha', 'Cv', 'kappa','theta_res', 'theta_sat', 'lambdas', 'lambdaw', 'lambdada', 'lambdava', 'zetaSol', 'zetaWat'])
     sPar = soilPar(rhoW=np.ones(np.shape(zN))*rhoW, n=np.ones(np.shape(zN))*n, m=np.ones(np.shape(zN))*m, alpha=np.ones(np.shape(zN))*alpha, Cv=np.ones(np.shape(zN))*Cv, kappa=np.ones(np.shape(zN))*kappa, theta_res=np.ones(np.shape(zN))*theta_res, 
-                   theta_sat =np.ones(np.shape(zN))*theta_sat)
+                   theta_sat =np.ones(np.shape(zN))*theta_sat, lambdas=np.ones(np.shape(zN))*lambdas, lambdaw=np.ones(np.shape(zN))*lambdaw, lambdada=np.ones(np.shape(zN))*lambdada, lambdava=np.ones(np.shape(zN))*lambdava, zetaSol=np.ones(np.shape(zN))*zetaSol,
+                   zetaWat=np.ones(np.shape(zN))*zetaWat)
                    
 
 
     # ## Definition of the Boundary Parameters
     # boundary parameters
     # collect boundary parameters in a named tuple boundpar...
-    boundPar = namedtuple('boundPar', ['tMin','tMax', 'botCon', 'h0','krob'])
-    bPar = boundPar(tMin=25,
+    boundPar = namedtuple('boundPar', ['avgT', 'rangeT','tMin','tMax', 'botCon', 'h0','krob', 'lambdaRobTop', 'lambdaRobBot', 'TBndBot'])
+    bPar = boundPar(avgT=273.15 + 10, 
+                    rangeT = 20,
+                    tMin=25,
                     tMax=200,
                     botCon='ROBIN',
                     h0 = -1,
-                    krob=0.01)
+                    krob=0.01,
+                    lambdaRobTop=1,
+                    lambdaRobBot=0,
+                    TBndBot=273.15 + 10)
+    
 
 
     # ## Initial Conditions
@@ -346,13 +398,13 @@ def main():
 
     mt.tic()
 
-    def intFun(t, T, hw):
-        if len(hw.shape) == 1:
-            hw = hw.reshaspe(nN,1)
-        nf = dhwdtFun(t, hw, sPar, mDim, bPar)
-        nv = hdp.DivHeatflux(t, T, sPar, mDim, bPar) 
-        dhdwT = np.concatenate(nf,nv)
-        return dhdwT
+    def intFun(t, y):
+        hw = y[0:nN]
+        T = y[nN:2*nN]
+        nf = dhwdtFun(t, T, hw, sPar, mDim, bPar)
+        nv = DivHeatFlux(t, T, hw, sPar, mDim, bPar)
+        dhwdT = np.concatenate(nf,nv)
+        return dhwdT
 
     def jacFun(t, y):
         if len(y.shape)==1:
@@ -363,7 +415,7 @@ def main():
         ycmplx = np.repeat(y,nr,axis=1).astype(complex)
         c_ex = np.eye(nr)*1j*dh
         ycmplx = ycmplx + c_ex
-        dfdy = intFun(t,T,ycmplx).imag/dh      #make T complex
+        dfdy = intFun(t, ycmplx).imag/dh      #make T complex
         return spi.coo_matrix(dfdy)
 
     
