@@ -74,10 +74,10 @@ def lambda_fun(hw, sPar, mDim):  # Gaat dit goed met de definitie theta? Moeten 
              / (Fs * (1 - por) + Fw * por * Sw + Fa * por * (1 - Sw))
 
     lamtotIN = np.zeros(np.shape(mDim.zIN), dtype=hw.dtype)
-    lamtotIN[0] = lamtot[0]
+    lamtotIN[0,0] = lamtot[0,0]
     i = np.arange(1, nIN - 1)
-    lamtotIN[i] = np.minimum(lamtot[i - 1], lamtot[i])
-    lamtotIN[nIN - 1] = lamtot[nIN - 2]
+    lamtotIN[i,0] = np.minimum(lamtot[i - 1,0], lamtot[i,0])
+    lamtotIN[nIN - 1,0] = lamtot[nIN - 2,0]
 
     return lamtotIN * 24 * 3600
 
@@ -273,10 +273,7 @@ def DivHeatFlux(t, T, hw, sPar, mDim, bPar):
 
     # Top condition is special
     i = nN - 1
-    if bPar.topCond.lower() == 'dirichlet':
-        divqH[i] = 0
-    else:
-        divqH[i] = -(qH[i + 1] - qH[i]) \
+    divqH[i] = -(qH[i + 1] - qH[i]) \
                    / (dzIN[i] * zeta[i])
 
     divqHRet = divqH  # .reshape(T.shape)
@@ -396,7 +393,7 @@ bPar = boundPar(avgT=273.15 + 10,
                 rangeT=20,
                 tMin=25,
                 tMax=200,
-                topCond='dirichlet',
+                topCond='ROBIN',
                 botCon='ROBIN',
                 h0=-1,
                 krob=0.01,
@@ -424,8 +421,7 @@ def intFun(t, y):
     T = y[nN:2 * nN]
     nf = dhwdtFun(t, T, hw, sPar, mDim, bPar)
     nv = DivHeatFlux(t, T, hw, sPar, mDim, bPar)
-    dhwdT = np.concatenate(nf, nv)
-    print(np.shape(dhwdT))
+    dhwdT = np.concatenate((nf, nv))
     return dhwdT
 
 
@@ -448,12 +444,15 @@ HODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], YIni.squeeze(), method='BDF',
                      t_eval=tOut, vectorized=True, rtol=1e-6)
 mt.toc()
 
+hw = HODE.y[0:nN]
+T = HODE.y[nN:2 * nN]
+
 plt.close('all')
 fig1, ax1 = plt.subplots(figsize=(7, 4))
 for ii in np.arange(0, nN, 5):
-    ax1.plot(HODE.t, HODE.y[ii, :], '-', label=ii)
+    ax1.plot(HODE.t, hw[ii,:], '-', label=ii)
 ax1.legend()
-ax1.set_title('Water pressure head, impermeable top and  ROBIN condition (ODE)')
+ax1.set_title('Water pressure head against time')
 ax1.grid(b=True)
 ax1.set_xlabel('time [days]')
 ax1.set_ylabel('Water pressure head [m]')
@@ -461,22 +460,31 @@ ax1.set_ylabel('Water pressure head [m]')
 fig2, ax2 = plt.subplots(figsize=(4, 7))
 
 for ii in np.arange(0, HODE.t.size, 1):
-    ax2.plot(HODE.y[:, ii], zN[:, 0], '-')
-ax2.set_title('Water pressure head vs. depth, impermeable top and  ROBIN condition (ODE)')
+    ax2.plot(HODE.t, T[ii,:], '-')
+ax2.set_title('Time against Temperature')
 # ax2.legend()
 ax2.grid(b=True)
-ax2.set_xlabel('Water pressure head [m]')
-ax2.set_ylabel('Depth [m]')
+ax2.set_xlabel('time [days]')
+ax2.set_ylabel('Temperature [Kelvin]')
 
-thODE = Theta(HODE.y, sPar)
 
 fig3, ax3 = plt.subplots(figsize=(7, 7))
 for ii in np.arange(0, HODE.t.size, 1):
-    ax3.plot(thODE[:, ii], zN[:, 0], '-', label=ii)
+    ax3.plot(hw[:,ii], zN[:, 0], '-', label=ii)
 ax3.grid(b=True)
 # ax3.legend()
-ax3.set_title('Water content vs. depth, impermeable top and ROBIN condition (ODE)')
-ax3.set_xlabel('water content [-]')
+ax3.set_title('Water pressure head against depth')
+ax3.set_xlabel('water pressure head [m]')
+ax3.set_ylabel('depth [m]')
+plt.show()
+
+fig4, ax4 = plt.subplots(figsize=(7, 7))
+for ii in np.arange(0, HODE.t.size, 1):
+    ax4.plot(T[:,ii], zN[:, 0], '-', label=ii)
+ax4.grid(b=True)
+# ax3.legend()
+ax3.set_title('Temperature against depth ')
+ax3.set_xlabel('Temperature [Kelvin]')
 ax3.set_ylabel('depth [m]')
 plt.show()
 # plt.savefig('myfig.png')
