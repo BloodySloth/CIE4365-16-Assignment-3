@@ -30,23 +30,6 @@ import HeatDiffusionPython as hdp
 # DivwaterFlux for calculating the divergence of the waterflow across the cells in the domain.
 
 
-<<<<<<< Updated upstream
-#make the temperature viscosity table
-def TempVis(T, mDim):
-    Tini = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653, 0.547, 0.467, 0.404, 0.355, 0.315, 0.282]
-    p = np.polyfit(Tini, mu, 11)
-    p = np.poly1d(p)
-    mu1 = p(T) 
-    zN = mDim.zN
-    mu1 = np.ones(np.shape(zN))*mu1[0]
-    return mu1
-
-#make Ksat          #maybe make array from this?
-def Ksat(T, sPar, mDim):
-    Ksat = sPar.kappa / TempVis(T, mDim) * sPar.rhoW * 9.81
-    
-=======
 # make the temperature viscosity table
 counnt = 0
 
@@ -66,7 +49,6 @@ def TempVis(T):
 def Ksat(T, sPar):
     # Ksat = sPar.kappa / TempVis(T) * sPar.rhoW * 9.81
     Ksat = sPar.Ksat1 * TempVis(298.15) / TempVis(T)
->>>>>>> Stashed changes
     return Ksat
 
 
@@ -164,18 +146,11 @@ def waterFlux(t, T, hw, sPar, mDim, bPar):
     nIN = mDim.nIN
 
     dzN = mDim.dzN
-<<<<<<< Updated upstream
-    ksat= Ksat(T, sPar, mDim)
-    krw=krwfun(hw, sPar, mDim)
-    nr,nc = hw.shape
-    q = np.zeros((nIN,nc))
-=======
 
     ksat = Ksat(T, sPar)
     krw = krwfun(hw, sPar, mDim)
     nr, nc = hw.shape
     q = np.zeros((nIN, nc))
->>>>>>> Stashed changes
 
     # Flux in all intermediate nodes
     i = np.arange(1, nIN - 1)
@@ -199,14 +174,9 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
     nN = mDim.nN
     dzN = mDim.dzN
     lambdaIN = lambda_fun(hw, sPar, mDim)
-<<<<<<< Updated upstream
-    zetaW = sPar.zetaW
-    nr,nc = T.shape
-=======
     zetaWat = sPar.zetaWat
     nr, nc = T.shape
     print("T PRZED WATERFLUXEM", T)
->>>>>>> Stashed changes
     qw = waterFlux(t, T, hw, sPar, mDim, bPar)
 
     ql = np.zeros([nIN, nc])
@@ -221,15 +191,9 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
     ql[0] = -bPar.lambdaRobBot * (T[0] - bPar.TBndBot)
 
     qz[0] = 0.0
-<<<<<<< Updated upstream
-    qz[0] = qw[0] * zetaW * (bPar.TBndBot * (qw[0] >= 0) \
-                  + T[0] *  (qw[0] < 0))
-        
-=======
     qz[0] = qw[0] * zetaWat[0] * (bPar.TBndBot * (qw[0] >= 0)
                                   + T[0] * (qw[0] < 0))
 
->>>>>>> Stashed changes
     # Flux in all intermediate nodes
     i = np.arange(1, nIN - 1)
     ql[i] = -lambdaIN[i] * ((T[i] - T[i - 1])
@@ -238,19 +202,6 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
     qz[i] = zetaWat[0] * qw[i] * (T[i - 1] * (qw[i] >= 0) +
                                T[i] * (qw[i] < 0))
 
-<<<<<<< Updated upstream
-    qz[i] = zetaW * qw[i] * (T[i-1] * (qw[i] >= 0) +\
-              	T[i] * (qw[i] < 0))              
-    
-    # Top layer
-    
-        # Robin condition            
-    ql[nIN-1] = -bPar.lambdaRobTop * (bndT - T[nN-1])
-    qz[nIN-1] = zetaW * qw[nIN - 1] * (T[nN-1] * (qw[nIN-1] >= 0) + \
-              	 bndT * (qw[nIN-1] < 0)) 
-    
-    qh= ql + qz
-=======
     # Top layer
 
     # Robin condition
@@ -259,7 +210,6 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
                                            bndT * (qw[nIN - 1] < 0))
 
     qh = ql + qz
->>>>>>> Stashed changes
     return qh
 
 
@@ -304,11 +254,7 @@ def dhwdtFun(t, T, hw, sPar, mDim, bPar):
     C = Caccentfun(hw, sPar, mDim)
 
     qW = waterFlux(t, T, hw, sPar, mDim, bPar)
-<<<<<<< Updated upstream
-    
-=======
 
->>>>>>> Stashed changes
     # Calculate divergence of flux for all nodes
     i = np.arange(0, nN)
     divqW[i] = -(qW[i + 1] - qW[i]) / (dzIN[i] * C[i])
@@ -385,154 +331,6 @@ def divCoupled(t, y, sPar, mDim, bPar):
     return totaldif
 
 
-<<<<<<< Updated upstream
-def main():
-    # Then we start running our model.
-    # First we require the domain discretization
-
-    # Domain
-    nIN = 101
-    # soil profile until 1 meters depth
-    zIN = np.linspace(-1, 0, num=nIN).reshape(nIN, 1)
-    # nIN = np.shape(zIN)[0]
-    zN = np.zeros(nIN - 1).reshape(nIN - 1, 1)
-    zN[0,0] = zIN[0,0]
-    zN[1:nIN - 2,0] = (zIN[1:nIN - 2,0] + zIN[2:nIN - 1,0]) / 2
-    zN[nIN - 2,0] = zIN[nIN - 1]
-    nN = np.shape(zN)[0]
-
-    i = np.arange(0, nN - 1)
-    dzN = (zN[i + 1,0] - zN[i,0]).reshape(nN - 1,1)
-    dzIN = (zIN[1:,0] - zIN[0:-1,0]).reshape(nIN - 1,1)
-
-    # collect model dimensions in a namedtuple: modDim
-    modDim = namedtuple('ModDim', ['zN', 'zIN', 'dzN', 'dzIN', 'nN', 'nIN'])
-    mDim = modDim(zN=zN,
-                  zIN=zIN,
-                  dzN=dzN,
-                  dzIN=dzIN,
-                  nN=nN,
-                  nIN=nIN)
-
-    # ## Definition of material properties
-    # In this section of the code we define the material properties
-
-    # Soil Properties SAND from table 2.4 Mayer & Hassanizadeh ch 2
-
-    rhoW = 1000  # [kg/m3] density of water
-    theta_res=0.045
-    theta_sat=0.38
-    n= 3
-    m= 1-(1/3)
-    alpha=2 #m^-1
-    Cv=1e-8
-    kappa = 0.05 #m/day
-    lambdas = 6 
-    lambdaw = 0.57
-    lambdada = 0.025
-    lambdava = 0.0736
-    zetaSol = 2.235e6
-    zetaWat = 4.154e6
-
-    # collect soil parameters in a namedtuple: soilPar
-    soilPar = namedtuple('soilPar', ['rhoW','n', 'm','alpha', 'Cv', 'kappa','theta_res', 'theta_sat', 'lambdas', 'lambdaw', 'lambdada', 'lambdava', 'zetaSol', 'zetaWat'])
-    sPar = soilPar(rhoW=np.ones(np.shape(zN))*rhoW, n=np.ones(np.shape(zN))*n, m=np.ones(np.shape(zN))*m, alpha=np.ones(np.shape(zN))*alpha, Cv=np.ones(np.shape(zN))*Cv, kappa=np.ones(np.shape(zN))*kappa, theta_res=np.ones(np.shape(zN))*theta_res, 
-                   theta_sat =np.ones(np.shape(zN))*theta_sat, lambdas=np.ones(np.shape(zN))*lambdas, lambdaw=np.ones(np.shape(zN))*lambdaw, lambdada=np.ones(np.shape(zN))*lambdada, lambdava=np.ones(np.shape(zN))*lambdava, zetaSol=np.ones(np.shape(zN))*zetaSol,
-                   zetaWat=np.ones(np.shape(zN))*zetaWat)
-                   
-
-
-    # ## Definition of the Boundary Parameters
-    # boundary parameters
-    # collect boundary parameters in a named tuple boundpar...
-    boundPar = namedtuple('boundPar', ['avgT', 'rangeT','tMin','tMax', 'botCon', 'h0','krob', 'lambdaRobTop', 'lambdaRobBot', 'TBndBot'])
-    bPar = boundPar(avgT=273.15 + 10, 
-                    rangeT = 20,
-                    tMin=25,
-                    tMax=200,
-                    botCon='ROBIN',
-                    h0 = -1,
-                    krob=0.01,
-                    lambdaRobTop=1,
-                    lambdaRobBot=0,
-                    TBndBot=273.15 + 10)
-    
-
-
-    # ## Initial Conditions
-    # Initial Conditions
-    HIni= -0.75-zN
-    # Time Discretization
-    tOut = np.linspace(0, 600, 120)  # time
-    nOut = np.shape(tOut)[0]
-
-    # ## Implement using the built-in ode solver
-
-    mt.tic()
-
-    def intFun(t, y):
-        hw = y[0:nN]
-        T = y[nN:2*nN]
-        nf = dhwdtFun(t, T, hw, sPar, mDim, bPar)
-        nv = DivHeatFlux(t, T, hw, sPar, mDim, bPar)
-        dhwdT = np.concatenate(nf,nv)
-        return dhwdT
-
-    def jacFun(t, y):
-        if len(y.shape)==1:
-            y = y.reshape(mDim.nN,1)
-        
-        nr, nc = y.shape
-        dh = np.sqrt(np.finfo(float).eps)
-        ycmplx = np.repeat(y,nr,axis=1).astype(complex)
-        c_ex = np.eye(nr)*1j*dh
-        ycmplx = ycmplx + c_ex
-        dfdy = intFun(t, ycmplx).imag/dh      #make T complex
-        return spi.coo_matrix(dfdy)
-
-    
-   # H0 = HIni.squeeze()
-    #print(H0)
-    HODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], HIni.squeeze(), method='BDF',
-                         t_eval=tOut, vectorized=True, rtol=1e-6)
-    mt.toc()
-
-    plt.close('all')
-    fig1, ax1 = plt.subplots(figsize=(7, 4))
-    for ii in np.arange(0, nN, 5):
-        ax1.plot(HODE.t, HODE.y[ii,:], '-', label=ii)
-    ax1.legend()
-    ax1.set_title('Water pressure head, impermeable top and  ROBIN condition (ODE)')
-    ax1.grid(b=True)
-    ax1.set_xlabel('time [days]')
-    ax1.set_ylabel('Water pressure head [m]')
-
-    fig2, ax2 = plt.subplots(figsize=(4, 7))
-
-    for ii in np.arange(0, HODE.t.size, 1):
-        ax2.plot(HODE.y[:, ii], zN[:, 0], '-')
-    ax2.set_title('Water pressure head vs. depth, impermeable top and  ROBIN condition (ODE)')
-    #ax2.legend()
-    ax2.grid(b=True)
-    ax2.set_xlabel('Water pressure head [m]')
-    ax2.set_ylabel('Depth [m]')
-    
-    thODE = Theta(HODE.y, sPar)
-    
-    fig3, ax3 = plt.subplots(figsize=(7, 7))
-    for ii in np.arange(0, HODE.t.size, 1):
-        ax3.plot(thODE[:, ii], zN[:, 0], '-', label=ii)
-    ax3.grid(b=True)
-    #ax3.legend()
-    ax3.set_title('Water content vs. depth, impermeable top and ROBIN condition (ODE)')
-    ax3.set_xlabel('water content [-]')
-    ax3.set_ylabel('depth [m]')
-    plt.show()
-    # plt.savefig('myfig.png')
-
-if __name__ == "__main__":
-    main()
-=======
 # def main():
 # Then we start running our model.
 # First we require the domain discretization
@@ -690,4 +488,3 @@ plt.show()
 
 # if __name__ == "__main__":
 # main()
->>>>>>> Stashed changes
