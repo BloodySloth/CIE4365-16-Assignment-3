@@ -39,8 +39,6 @@ def TempVis(T):
     Tini = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     mu = [1.787, 1.519, 1.307, 1.002, 0.798, 0.653, 0.547, 0.467, 0.404, 0.355, 0.315, 0.282]  # MPa/s
     p = spint.interp1d(Tini, mu, fill_value='extrapolate')
-
-    print(T)
     mu1 = p(T - 273.15) * 1e-3
     return mu1
 
@@ -52,8 +50,7 @@ def Ksat(T, sPar):
     return Ksat
 
 
-def lambda_fun(hw, sPar,
-               mDim):  # Gaat dit goed met de definitie theta? Moeten we die msischien eerder oproepen? check als we het runnen
+def lambda_fun(hw, sPar,mDim):  # Gaat dit goed met de definitie theta? Moeten we die msischien eerder oproepen? check als we het runnen
     nN = mDim.nN
     nIN = mDim.nIN
 
@@ -142,7 +139,6 @@ def BndTTop(t, bPar):
 
 # part of the richardson equation Ksat*krw(gradient*hw+flux*z))
 def waterFlux(t, T, hw, sPar, mDim, bPar):
-    print("T W WATERFLUXIE", T)
     nIN = mDim.nIN
 
     dzN = mDim.dzN
@@ -165,7 +161,6 @@ def waterFlux(t, T, hw, sPar, mDim, bPar):
     # top boundary conditions
     # bndw = BndwTop(t, bPar)
     q[nIN - 1] = 0  # or bndw
-    print("T NA KONIEC WATERFLUXA", T)
     return q
 
 
@@ -176,7 +171,6 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
     lambdaIN = lambda_fun(hw, sPar, mDim)
     zetaWat = sPar.zetaWat
     nr, nc = T.shape
-    print("T PRZED WATERFLUXEM", T)
     qw = waterFlux(t, T, hw, sPar, mDim, bPar)
 
     ql = np.zeros([nIN, nc])
@@ -427,7 +421,6 @@ mt.tic()
 def intFun(t, y):
     hw = y[0:nN]
     T = y[nN:2 * nN]
-    print(T)
     nf = dhwdtFun(t, T, hw, sPar, mDim, bPar)
     nv = DivHeatFlux(t, T, hw, sPar, mDim, bPar)
     dhwdT = np.concatenate(nf, nv)
