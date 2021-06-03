@@ -50,7 +50,7 @@ def Ksat(T, sPar):
     return Ksat
 
 
-def lambda_fun(hw, sPar,mDim):  # Gaat dit goed met de definitie theta? Moeten we die msischien eerder oproepen? check als we het runnen
+def lambda_fun(hw, sPar, mDim):  # Gaat dit goed met de definitie theta? Moeten we die msischien eerder oproepen? check als we het runnen
     nN = mDim.nN
     nIN = mDim.nIN
 
@@ -194,14 +194,14 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
                             / dzN[i - 1])
 
     qz[i] = zetaWat[0] * qw[i] * (T[i - 1] * (qw[i] >= 0) +
-                               T[i] * (qw[i] < 0))
+                                  T[i] * (qw[i] < 0))
 
     # Top layer
 
     # Robin condition
     ql[nIN - 1] = -bPar.lambdaRobTop * (bndT - T[nN - 1])
     qz[nIN - 1] = zetaWat[0] * qw[nIN - 1] * (T[nN - 1] * (qw[nIN - 1] >= 0) +
-                                           bndT * (qw[nIN - 1] < 0))
+                                              bndT * (qw[nIN - 1] < 0))
 
     qh = ql + qz
     return qh
@@ -390,12 +390,13 @@ sPar = soilPar(rhoW=np.ones(np.shape(zN)) * rhoW, n=np.ones(np.shape(zN)) * n, m
 # boundary parameters
 # collect boundary parameters in a named tuple boundpar...
 boundPar = namedtuple('boundPar',
-                      ['avgT', 'rangeT', 'tMin', 'tMax', 'botCon', 'h0', 'krob', 'lambdaRobTop', 'lambdaRobBot',
+                      ['avgT', 'rangeT', 'tMin', 'tMax', 'topCond', 'botCon', 'h0', 'krob', 'lambdaRobTop', 'lambdaRobBot',
                        'TBndBot'])
 bPar = boundPar(avgT=273.15 + 10,
                 rangeT=20,
                 tMin=25,
                 tMax=200,
+                topCond='dirichlet',
                 botCon='ROBIN',
                 h0=-1,
                 krob=0.01,
@@ -424,6 +425,7 @@ def intFun(t, y):
     nf = dhwdtFun(t, T, hw, sPar, mDim, bPar)
     nv = DivHeatFlux(t, T, hw, sPar, mDim, bPar)
     dhwdT = np.concatenate(nf, nv)
+    print(np.shape(dhwdT))
     return dhwdT
 
 
