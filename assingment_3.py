@@ -15,7 +15,6 @@ import scipy.integrate as spi
 import MyTicToc as mt
 import matplotlib.pyplot as plt
 from collections import namedtuple
-import HeatDiffusionPython as hdp
 
 # plot figures inline
 # %matplotlib inline
@@ -44,9 +43,10 @@ def TempVis(T):
 
 
 # make Ksat          #maybe make array from this?
-def Ksat(T, sPar):
-    # Ksat = sPar.kappa / TempVis(T) * sPar.rhoW * 9.81
-    Ksat = sPar.Ksat1 * TempVis(298.15) / TempVis(T)
+def Ksat(T, mDim):
+    #Ksat = sPar.Ksat1 / TempVis(T) * sPar.rhoW * 9.81
+    #Ksat = sPar.Ksat1 * (TempVis(298.15) / TempVis(T))
+    Ksat=np.ones(np.shape(mDim.zN))*0.05
     return Ksat
 
 
@@ -113,7 +113,7 @@ def Theta(hw, sPar):
 # making krw (relative permeability) for every hw
 def krwfun(hw, sPar, mDim):
     nIN = mDim.nIN
-    Seff = SEFF(hw, sPar, )
+    Seff = SEFF(hw, sPar)
     nr, nc = hw.shape
 
     krw = Seff ** 3
@@ -143,7 +143,7 @@ def waterFlux(t, T, hw, sPar, mDim, bPar):
 
     dzN = mDim.dzN
 
-    ksat = Ksat(T, sPar)
+    ksat = Ksat(T, mDim)
     krw = krwfun(hw, sPar, mDim)
     nr, nc = hw.shape
     q = np.zeros((nIN, nc))
@@ -392,7 +392,7 @@ boundPar = namedtuple('boundPar',
 bPar = boundPar(avgT=273.15 + 10,
                 rangeT=20,
                 tMin=25,
-                tMax=200,
+                tMax=300,
                 topCond='ROBIN',
                 botCon='ROBIN',
                 h0=-1,
@@ -421,9 +421,8 @@ def intFun(t, y):
     T = y[nN:2 * nN]
     nf = dhwdtFun(t, T, hw, sPar, mDim, bPar)
     nv = DivHeatFlux(t, T, hw, sPar, mDim, bPar)
-    dhwdT = np.concatenate((nf, nv))
+    dhwdT = np.vstack([nf, nv])
     return dhwdT
-
 
 def jacFun(t, y):
     if len(y.shape) == 1:
@@ -437,6 +436,20 @@ def jacFun(t, y):
     dfdy = intFun(t, ycmplx).imag / dh  # make T complex
     return spi.coo_matrix(dfdy)
 
+# def jac_complex(t, y):
+#     if len(y.shape) == 1:
+#         y = y.reshape(mDim.nN, 1)
+        
+#     nr, nc = y.shape
+#     dh = np.sqrt(np.finfo(float).eps)
+#     ycmplx = np.repeat(y, nr, axis=1).astype(complex)
+#     jac=np.zeros((nr,nr))
+#     for i in np.arange(nr):
+#         ycmplx=y.copy().astype(complex)
+#         ycmplx[i]=ycmplx[i]+1j*dh
+#         dfdy=intFun(t, ycmplx).imag/dh
+#         jac[:,i]=dfdy.squeeze()
+#     return jac  
 
 # H0 = HIni.squeeze()
 # print(H0)
@@ -444,12 +457,12 @@ HODE = spi.solve_ivp(intFun, [tOut[0], tOut[-1]], YIni.squeeze(), method='BDF',
                      t_eval=tOut, vectorized=True, rtol=1e-6)
 mt.toc()
 
-hw = HODE.y[0:nN]
-T = HODE.y[nN:2 * nN]
+hw = HODE.y[0:nN,:]
+T = HODE.y[nN:2 * nN,:]
 
 plt.close('all')
 fig1, ax1 = plt.subplots(figsize=(7, 4))
-for ii in np.arange(0, nN, 5):
+for ii in np.arange(0, nN, 10):
     ax1.plot(HODE.t, hw[ii,:], '-', label=ii)
 ax1.legend()
 ax1.set_title('Water pressure head against time')
@@ -459,7 +472,7 @@ ax1.set_ylabel('Water pressure head [m]')
 
 fig2, ax2 = plt.subplots(figsize=(4, 7))
 
-for ii in np.arange(0, HODE.t.size, 1):
+for ii in np.arange(0, nN, 10):
     ax2.plot(HODE.t, T[ii,:], '-')
 ax2.set_title('Time against Temperature')
 # ax2.legend()
@@ -469,8 +482,8 @@ ax2.set_ylabel('Temperature [Kelvin]')
 
 
 fig3, ax3 = plt.subplots(figsize=(7, 7))
-for ii in np.arange(0, HODE.t.size, 1):
-    ax3.plot(hw[:,ii], zN[:, 0], '-', label=ii)
+for ii in np.arange(0, nOut, 10):
+    ax3.plot(hw[:,ii], zN, '-', label=ii)
 ax3.grid(b=True)
 # ax3.legend()
 ax3.set_title('Water pressure head against depth')
@@ -479,13 +492,13 @@ ax3.set_ylabel('depth [m]')
 plt.show()
 
 fig4, ax4 = plt.subplots(figsize=(7, 7))
-for ii in np.arange(0, HODE.t.size, 1):
-    ax4.plot(T[:,ii], zN[:, 0], '-', label=ii)
+for ii in np.arange(0, nOut, 10):
+    ax4.plot(T[:,ii], zN, '-', label=ii)
 ax4.grid(b=True)
 # ax3.legend()
-ax3.set_title('Temperature against depth ')
-ax3.set_xlabel('Temperature [Kelvin]')
-ax3.set_ylabel('depth [m]')
+ax4.set_title('Temperature against depth ')
+ax4.set_xlabel('Temperature [Kelvin]')
+ax4.set_ylabel('depth [m]')
 plt.show()
 # plt.savefig('myfig.png')
 
