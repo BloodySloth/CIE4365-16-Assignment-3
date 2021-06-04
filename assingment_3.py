@@ -1,14 +1,3 @@
-# coding: utf-8
-
-# # Heat Diffusion in Soils
-# 
-# This Jupyter Notebook gives an example how to implement a 1D heat diffusion model in Python.
-# 
-# First we need to import the packages which we will be using:
-# 
-
-# In[1]:
-
 
 import numpy as np
 import scipy.integrate as spi
@@ -255,29 +244,77 @@ def dhwdtFun(t, T, hw, sPar, mDim, bPar):
 
     return divqW
 
+def FillmMatHeat(t, T, hw, sPar, mDim, bPar):
+    zetaBN = sPar.zetaBN
+    if bPar.topCond.lower() == 'dirichlet':
+        zetaBN[mDim.nN - 1, 0] = 0
+    mMat = np.diag(zetaBN.squeeze(), 0)
+    return mMat
 
 def DivHeatFlux(t, T, hw, sPar, mDim, bPar):
     nN = mDim.nN
     dzIN = mDim.dzIN
-    zeta = zeta_fun(hw, sPar)
+    lochw = hw.copy()
+    locT = T.copy()
+    zetaBN= np.diag(FillmMatHeat(t, locT, lochw, sPar, mDim, bPar))
     nr, nc = T.shape
 
     # Calculate heat fluxes accross all internodes
-    qH = HeatFlux(t, hw, T, sPar, mDim, bPar)
+    qH = HeatFlux(t, lochw, locT, sPar, mDim, bPar)
 
-    divqH = np.zeros([nN, nc])
+    divqH = np.zeros((nN, 1), dtype=hw.dtype)
     # Calculate divergence of flux for all nodes
     i = np.arange(0, nN - 1)
-    divqH[i] = -(qH[i + 1] - qH[i]) \
-               / (dzIN[i] * zeta[i])
+    divqH[i,0] = -(qH[i + 1,0] - qH[i,0]) \
+               / (dzIN[i,0] * zetaBN[i])
 
     # Top condition is special
     i = nN - 1
-    divqH[i] = -(qH[i + 1] - qH[i]) \
-                   / (dzIN[i] * zeta[i])
+    if bPar.topCond.lower() == 'dirichlet':
+        divqH[i,0] = 0
+    else: 
+        divqH[i,0] = -(qH[i + 1,0] - qH[i,0]) / (dzIN[i,0] * zetaBN[i])
+    
+    ii = np.arange(0, nN-1)
+    dzetadt = np.zeros((nN,1), dtype=hw.dtype)
+    dthetadt = dhwdtFun(t, locT, lochw, sPar, mDim, bPar)
+    dzetadtheta = 4.154e6
+    dzetadt[ii,0]=dzetadtheta*dthetadt[ii,0]
+    
+    divqHRet = np.zeros((nN,1), dtype = hw.dtype)
+    divqHRet[ii,0] = divqH[ii,0] -locT[ii,0] * dzetadt[ii,0] / zetaBN[i]
+    
+    #top condition is special
+    ii = nN-1
+    if bPar.topCond.lower() == 'dirichlet':
+        divqHRet[ii,0] = 0
+    else:
+        divqHRet[ii,0] = divqH[ii,0] - locT[ii,0] * dzetadt[ii,0] / zetaBN[ii]
 
-    divqHRet = divqH  # .reshape(T.shape)
     return divqHRet
+
+# def DivHeatFlux(t, T, hw, sPar, mDim, bPar):
+#     nN = mDim.nN
+#     dzIN = mDim.dzIN
+#     zeta = zeta_fun(hw, sPar)
+#     nr, nc = T.shape
+
+#     # Calculate heat fluxes accross all internodes
+#     qH = HeatFlux(t, hw, T, sPar, mDim, bPar)
+
+#     divqH = np.zeros([nN, nc])
+#     # Calculate divergence of flux for all nodes
+#     i = np.arange(0, nN - 1)
+#     divqH[i] = -(qH[i + 1] - qH[i]) \
+#                / (dzIN[i] * zeta[i])
+
+#     # Top condition is special
+#     i = nN - 1
+#     divqH[i] = -(qH[i + 1] - qH[i]) \
+#                    / (dzIN[i] * zeta[i])
+
+#     divqHRet = divqH  # .reshape(T.shape)
+#     return divqHRet
 
 
 # delete this when it is not necessary
@@ -374,14 +411,15 @@ Fw = 1
 # collect soil parameters in a namedtuple: soilPar
 soilPar = namedtuple('soilPar',
                      ['rhoW', 'n', 'm', 'alpha', 'Cv', 'Ksat1', 'theta_res', 'theta_sat', 'lambdas', 'lambdaw',
-                      'lambdada', 'lambdava', 'zetaSol', 'zetaWat', 'Fw'])
+                      'lambdada', 'lambdava', 'zetaSol', 'zetaWat', 'Fw', 'zetaBN'])
 sPar = soilPar(rhoW=np.ones(np.shape(zN)) * rhoW, n=np.ones(np.shape(zN)) * n, m=np.ones(np.shape(zN)) * m,
                alpha=np.ones(np.shape(zN)) * alpha, Cv=np.ones(np.shape(zN)) * Cv, Ksat1=np.ones(np.shape(zN)) * Ksat1,
                theta_res=np.ones(np.shape(zN)) * theta_res,
                theta_sat=np.ones(np.shape(zN)) * theta_sat, lambdas=np.ones(np.shape(zN)) * lambdas,
                lambdaw=np.ones(np.shape(zN)) * lambdaw, lambdada=np.ones(np.shape(zN)) * lambdada,
                lambdava=np.ones(np.shape(zN)) * lambdava, zetaSol=np.ones(np.shape(zN)) * zetaSol,
-               zetaWat=np.ones(np.shape(zN)) * zetaWat, Fw=np.ones(np.shape(zN)) * Fw, )
+               zetaWat=np.ones(np.shape(zN)) * zetaWat, Fw=np.ones(np.shape(zN)) * Fw, 
+               zetaBN=np.ones(np.shape(zN)) * ((1 - n) * zetaSol + n * zetaWat))
 
 # ## Definition of the Boundary Parameters
 # boundary parameters
@@ -405,7 +443,7 @@ bPar = boundPar(avgT=273.15 + 10,
 # Initial Conditions
 HIni = -0.75 - zN
 TIni = np.ones(np.shape(zN)) * (10.0 + 273.15)  # K
-YIni = np.concatenate([HIni, TIni])
+YIni = np.vstack([HIni[0], TIni[0]])
 
 # Time Discretization
 tOut = np.linspace(0, 600, 120)  # time
