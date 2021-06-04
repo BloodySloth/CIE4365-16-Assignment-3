@@ -39,7 +39,15 @@ def Ksat(T, mDim):
     return Ksat
 
 
+# making S effective
+def SEFF(hw, sPar):
+    hc = -hw  # ha is zero
+    Seff = (1 + ((hc * (hc > 0)) * sPar.alpha) ** sPar.n) ** -sPar.m
+    return Seff
+
+
 def lambda_fun(hw, sPar, mDim):  # Gaat dit goed met de definitie theta? Moeten we die msischien eerder oproepen? check als we het runnen
+
     nN = mDim.nN
     nIN = mDim.nIN
 
@@ -72,6 +80,7 @@ def lambda_fun(hw, sPar, mDim):  # Gaat dit goed met de definitie theta? Moeten 
 
 
 def zeta_fun(hw, sPar):  # zet zetaSol, zetaWat en zetaAir in assignment_3.py of leest het heat diff.?
+
     hw = np.real(hw.copy())
     thetaw = Theta(hw, sPar)
     Sw = thetaw / sPar.theta_sat
@@ -85,15 +94,10 @@ def zeta_fun(hw, sPar):  # zet zetaSol, zetaWat en zetaAir in assignment_3.py of
     return zetatot
 
 
-# making S effective
-def SEFF(hw, sPar):
-    hc = -hw  # ha is zero
-    Seff = (1 + ((hc * (hc > 0)) * sPar.alpha) ** sPar.n) ** -sPar.m
-    return Seff
-
 
 # making theta
 def Theta(hw, sPar):
+    
     Seff = SEFF(hw, sPar)
     theta_w = Seff * (sPar.theta_sat - sPar.theta_res) + sPar.theta_res
     return theta_w
@@ -148,8 +152,8 @@ def waterFlux(t, T, hw, sPar, mDim, bPar):
         q[0] = -ksat[0] * krw[0]
 
     # top boundary conditions
-    # bndw = BndwTop(t, bPar)
-    q[nIN - 1] = 0  # or bndw
+    bndw = BndwTop(t, bPar)
+    q[nIN - 1] = bndw
     return q
 
 
@@ -192,6 +196,7 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
     qz[nIN - 1] = zetaWat[0] * qw[nIN - 1] * (T[nN - 1] * (qw[nIN - 1] >= 0) +
                                               bndT * (qw[nIN - 1] < 0))
 
+
     qh = ql + qz
     return qh
 
@@ -205,6 +210,7 @@ def HeatFlux(t, T, hw, sPar, mDim, bPar):
 
 # Part of the richardson equation (C(hw)+Sw*Ss**w)
 def Cfuncmplx(hw, sPar):
+    
     dh = np.sqrt(np.finfo(float).eps)
     if np.iscomplexobj(hw):
         hcmplx = hw.real + 1j * dh
@@ -216,6 +222,7 @@ def Cfuncmplx(hw, sPar):
 
 
 def Caccentfun(hw, sPar, mDim):
+
     theta = Theta(hw, sPar)
     Sw = theta / sPar.theta_sat
     Chw = Cfuncmplx(hw, sPar)
@@ -228,6 +235,7 @@ def Caccentfun(hw, sPar, mDim):
 
 
 def dhwdtFun(t, T, hw, sPar, mDim, bPar):
+    
     nr, nc = hw.shape
     nN = mDim.nN
     dzIN = mDim.dzIN
@@ -245,6 +253,7 @@ def dhwdtFun(t, T, hw, sPar, mDim, bPar):
     return divqW
 
 def FillmMatHeat(t, T, hw, sPar, mDim, bPar):
+    
     zetaBN = sPar.zetaBN
     if bPar.topCond.lower() == 'dirichlet':
         zetaBN[mDim.nN - 1, 0] = 0
@@ -252,6 +261,7 @@ def FillmMatHeat(t, T, hw, sPar, mDim, bPar):
     return mMat
 
 def DivHeatFlux(t, T, hw, sPar, mDim, bPar):
+
     nN = mDim.nN
     dzIN = mDim.dzIN
     lochw = hw.copy()
@@ -276,20 +286,20 @@ def DivHeatFlux(t, T, hw, sPar, mDim, bPar):
         divqH[i,0] = -(qH[i + 1,0] - qH[i,0]) / (dzIN[i,0] * zetaBN[i])
     
     ii = np.arange(0, nN-1)
-    dzetadt = np.zeros((nN,1), dtype=hw.dtype)
-    dthetadt = dhwdtFun(t, locT, lochw, sPar, mDim, bPar)
+    dzetadt = np.zeros((nN,nc), dtype=hw.dtype)
+    dthetadt = dhwdtFun(t, locT, lochw, sPar, mDim, bPar)*Caccentfun(hw, sPar, mDim)
     dzetadtheta = 4.154e6
-    dzetadt[ii,0]=dzetadtheta*dthetadt[ii,0]
+    dzetadt[ii]=dzetadtheta*dthetadt[ii]
     
-    divqHRet = np.zeros((nN,1), dtype = hw.dtype)
-    divqHRet[ii,0] = divqH[ii,0] -locT[ii,0] * dzetadt[ii,0] / zetaBN[i]
+    divqHRet = np.zeros((nN,nc), dtype = hw.dtype)
+    divqHRet[ii] = divqH[ii] -locT[ii] * dzetadt[ii] / zetaBN[i]
     
     #top condition is special
     ii = nN-1
     if bPar.topCond.lower() == 'dirichlet':
-        divqHRet[ii,0] = 0
+        divqHRet[ii] = 0
     else:
-        divqHRet[ii,0] = divqH[ii,0] - locT[ii,0] * dzetadt[ii,0] / zetaBN[ii]
+        divqHRet[ii] = divqH[ii] - locT[ii] * dzetadt[ii] / zetaBN[ii]
 
     return divqHRet
 
@@ -319,6 +329,7 @@ def DivHeatFlux(t, T, hw, sPar, mDim, bPar):
 
 # delete this when it is not necessary
 def divCoupled(t, y, sPar, mDim, bPar):
+
     zN = mDim.zN
     nN = mDim.nN
     dzIN = mDim.dzIN
@@ -429,8 +440,8 @@ boundPar = namedtuple('boundPar',
                        'TBndBot'])
 bPar = boundPar(avgT=273.15 + 10,
                 rangeT=20,
-                tMin=25,
-                tMax=300,
+                tMin=0,
+                tMax=25,
                 topCond='ROBIN',
                 botCon='ROBIN',
                 h0=-1,
@@ -443,10 +454,10 @@ bPar = boundPar(avgT=273.15 + 10,
 # Initial Conditions
 HIni = -0.75 - zN
 TIni = np.ones(np.shape(zN)) * (10.0 + 273.15)  # K
-YIni = np.vstack([HIni[0], TIni[0]])
+YIni = np.vstack([HIni[:], TIni[:]])
 
 # Time Discretization
-tOut = np.linspace(0, 600, 120)  # time
+tOut = np.linspace(0, 25, 121)  # time
 nOut = np.shape(tOut)[0]
 
 # ## Implement using the built-in ode solver
@@ -455,6 +466,7 @@ mt.tic()
 
 
 def intFun(t, y):
+
     hw = y[0:nN]
     T = y[nN:2 * nN]
     nf = dhwdtFun(t, T, hw, sPar, mDim, bPar)
@@ -513,7 +525,7 @@ fig2, ax2 = plt.subplots(figsize=(4, 7))
 for ii in np.arange(0, nN, 10):
     ax2.plot(HODE.t, T[ii,:], '-')
 ax2.set_title('Time against Temperature')
-# ax2.legend()
+ax2.legend()
 ax2.grid(b=True)
 ax2.set_xlabel('time [days]')
 ax2.set_ylabel('Temperature [Kelvin]')
@@ -523,7 +535,7 @@ fig3, ax3 = plt.subplots(figsize=(7, 7))
 for ii in np.arange(0, nOut, 10):
     ax3.plot(hw[:,ii], zN, '-', label=ii)
 ax3.grid(b=True)
-# ax3.legend()
+ax3.legend()
 ax3.set_title('Water pressure head against depth')
 ax3.set_xlabel('water pressure head [m]')
 ax3.set_ylabel('depth [m]')
@@ -533,7 +545,7 @@ fig4, ax4 = plt.subplots(figsize=(7, 7))
 for ii in np.arange(0, nOut, 10):
     ax4.plot(T[:,ii], zN, '-', label=ii)
 ax4.grid(b=True)
-# ax3.legend()
+ax4.legend()
 ax4.set_title('Temperature against depth ')
 ax4.set_xlabel('Temperature [Kelvin]')
 ax4.set_ylabel('depth [m]')
